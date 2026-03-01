@@ -66,7 +66,6 @@ async def refresh(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def daily_trigger(context: ContextTypes.DEFAULT_TYPE) -> None:
     dt = datetime.datetime.now(ZoneInfo(TZ))
     bday: list[str] = db.get_birthday_for_day(dt.month, dt.day)
-    bday = [name for name in bday if "ADDIN ZAFRAN BIN HAMZAH" not in name]
     if len(bday) == 0:
         return
 
@@ -94,7 +93,6 @@ async def daily_trigger(context: ContextTypes.DEFAULT_TYPE) -> None:
         + escape_markdown(f"\n{response.text}", version=2)
         + escape_markdown(" ✨🥳✨", version=2)
     )
-    
 
     msg = await context.bot.send_message(
         -1001264770246, text, parse_mode=ParseMode.MARKDOWN_V2
