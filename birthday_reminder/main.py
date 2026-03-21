@@ -6,7 +6,7 @@ from collections import Counter
 from zoneinfo import ZoneInfo
 
 from google import genai
-from telegram import Update
+from telegram import BotCommand, Update
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
@@ -22,7 +22,6 @@ from birthday_reminder.database import Database
 
 defaults: Defaults = Defaults(tzinfo=ZoneInfo(TZ))
 log: logging.Logger = logging.getLogger(__name__)
-app: Application = ApplicationBuilder().token(BOT_TOKEN).defaults(defaults).build()
 db: Database = Database()
 
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY", ""))
@@ -35,10 +34,54 @@ generation_config = genai.types.GenerateContentConfig(
     response_mime_type="text/plain",
 )
 
+BOT_COMMANDS: list[BotCommand] = [
+    BotCommand("start", "say hi"),
+    BotCommand("help", "list all available commands"),
+    BotCommand("list", "show all birthdays"),
+    BotCommand("refresh", "reload the birthday database"),
+    BotCommand("today", "check today's birthdays"),
+    BotCommand("upcoming", "birthdays in the next N days (default 7)"),
+    BotCommand("month", "birthdays for a given month (default current)"),
+    BotCommand("search", "search for a name"),
+    BotCommand("stats", "aggregate stats (total, busiest month, etc.)"),
+    BotCommand("daily", "manually run the daily birthday trigger"),
+    BotCommand("monthly", "manually run the monthly birthday trigger"),
+]
+
+HELP_TEXT = (
+    "Available commands:\n"
+    "/start — say hi\n"
+    "/list — show all birthdays\n"
+    "/refresh — reload the birthday database\n"
+    "/today — check today's birthdays\n"
+    "/upcoming [days] — birthdays in the next N days (default 7)\n"
+    "/month [month] — birthdays for a given month (default current)\n"
+    "/search <name> — search for a name\n"
+    "/stats — aggregate stats (total, busiest month, etc.)\n"
+    "/daily — manually run the daily birthday trigger\n"
+    "/monthly — manually run the monthly birthday trigger\n"
+    "/help — list all available commands"
+)
+
+
+async def post_init(application: Application) -> None:
+    """Sync the bot's command list with Telegram after the app initialises."""
+    await application.bot.set_my_commands(BOT_COMMANDS)
+    log.info("bot commands synced with Telegram")
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     assert update.message is not None
     await update.message.reply_text("hi!")
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """List all available commands with brief descriptions. Usage: /help"""
+    assert update.message is not None
+    await update.message.reply_text(
+        escape_markdown(HELP_TEXT, version=2),
+        parse_mode=ParseMode.MARKDOWN_V2,
+    )
 
 
 async def listbday(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -301,6 +344,13 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def main() -> None:
     log.info("setting up handlers...")
+    app: Application = (
+        ApplicationBuilder()
+        .token(BOT_TOKEN)
+        .defaults(defaults)
+        .post_init(post_init)
+        .build()
+    )
     assert app.job_queue is not None
     app.job_queue.run_monthly(
         callback=monthly_trigger,
@@ -311,6 +361,7 @@ def main() -> None:
         daily_trigger, datetime.time(hour=0, minute=0, second=1, tzinfo=ZoneInfo(TZ))
     )
     app.add_handler(CommandHandler("start", start, block=False))
+    app.add_handler(CommandHandler("help", help_command, block=False))
     app.add_handler(CommandHandler("list", listbday, block=False))
     app.add_handler(CommandHandler("refresh", refresh, block=False))
     app.add_handler(CommandHandler("daily", trigger_daily, block=False))
