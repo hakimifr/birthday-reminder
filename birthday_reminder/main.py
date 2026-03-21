@@ -80,17 +80,23 @@ async def daily_trigger(context: ContextTypes.DEFAULT_TYPE) -> None:
         prompt += " Your output must be in Malay (Bahasa Melayu)."
 
     # response = await chat_session.send_message_async(prompt)
-    response = await client.aio.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt,
-        config=generation_config,
-    )
+    try:
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=generation_config,
+        )
+        wish = response.text
+    except Exception:
+        log.exception("Gemini response generation failed")
+        wish = "[cannot generate wish, check bot log. happy birthday!]"
+
     text = (
         escape_markdown("Today is the birthday of:", version=2)
         + "\n*"
         + escape_markdown(", ".join(bday), version=2).strip()
         + "*\n"
-        + escape_markdown(f"\n{response.text}", version=2)
+        + escape_markdown(f"\n{wish}", version=2)
         + escape_markdown(" ✨🥳✨", version=2)
     )
 
@@ -116,6 +122,18 @@ async def monthly_trigger(context: ContextTypes.DEFAULT_TYPE) -> None:
     await msg.pin()
 
 
+async def trigger_daily(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    assert update.message is not None
+    await daily_trigger(context)
+    await update.message.reply_text("daily trigger executed")
+
+
+async def trigger_monthly(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    assert update.message is not None
+    await monthly_trigger(context)
+    await update.message.reply_text("monthly trigger executed")
+
+
 def main() -> None:
     log.info("setting up handlers...")
     assert app.job_queue is not None
@@ -130,5 +148,7 @@ def main() -> None:
     app.add_handler(CommandHandler("start", start, block=False))
     app.add_handler(CommandHandler("list", listbday, block=False))
     app.add_handler(CommandHandler("refresh", refresh, block=False))
+    app.add_handler(CommandHandler("daily", trigger_daily, block=False))
+    app.add_handler(CommandHandler("monthly", trigger_monthly, block=False))
     log.info("done")
     app.run_polling(drop_pending_updates=True)
