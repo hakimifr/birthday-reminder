@@ -1,6 +1,8 @@
+import calendar
 import datetime
 import logging
 import os
+from collections import Counter
 from zoneinfo import ZoneInfo
 
 from google import genai
@@ -134,6 +136,169 @@ async def trigger_monthly(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await update.message.reply_text("monthly trigger executed")
 
 
+async def upcoming(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """List birthdays in the next N days (default 7). Usage: /upcoming [days]"""
+    assert update.message is not None
+
+    days: int = 7
+    if context.args:
+        try:
+            days = int(context.args[0])
+            if days < 1:
+                raise ValueError
+        except ValueError:
+            await update.message.reply_text(
+                "Usage: /upcoming [days] — days must be a positive integer."
+            )
+            return
+
+    dt = datetime.datetime.now(ZoneInfo(TZ))
+    results: list[tuple[datetime.date, list[str]]] = []
+
+    for offset in range(1, days + 1):
+        target = (dt + datetime.timedelta(days=offset)).date()
+        people = db.get_birthday_for_day(target.month, target.day)
+        if people:
+            results.append((target, people))
+
+    if not results:
+        await update.message.reply_text(f"No birthdays in the next {days} day(s).")
+        return
+
+    lines: list[str] = [f"Upcoming birthdays (next {days} day(s)):"]
+    for date, people in results:
+        date_str = date.strftime("%d %b")
+        lines.append(f"{date_str}: {', '.join(people)}")
+
+    await update.message.reply_text(
+        escape_markdown("\n".join(lines), version=2),
+        parse_mode=ParseMode.MARKDOWN_V2,
+    )
+
+
+async def search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Case-insensitive substring search for a name. Usage: /search <name>"""
+    assert update.message is not None
+
+    if not context.args:
+        await update.message.reply_text("Usage: /search <name>")
+        return
+
+    query = " ".join(context.args).lower()
+    all_data: dict[str, dict[str, str]] = db.get_raw_data()
+
+    matches = {name: data for name, data in all_data.items() if query in name.lower()}
+
+    if not matches:
+        await update.message.reply_text(
+            f'No results found for "{" ".join(context.args)}".'
+        )
+        return
+
+    lines: list[str] = [f'Search results for "{" ".join(context.args)}":']
+    for name, data in matches.items():
+        lines.append(
+            f"{' '.join(name.split()[:3])} — {data.get('day')}/{data.get('month')}/{data.get('year')}"
+        )
+
+    await update.message.reply_text(
+        escape_markdown("\n".join(lines), version=2),
+        parse_mode=ParseMode.MARKDOWN_V2,
+    )
+
+
+async def today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Read-only check for today's birthdays. Usage: /today"""
+    assert update.message is not None
+
+    dt = datetime.datetime.now(ZoneInfo(TZ))
+    bday: list[str] = db.get_birthday_for_day(dt.month, dt.day)
+
+    if not bday:
+        await update.message.reply_text("No birthdays today.")
+        return
+
+    lines: list[str] = ["🎂 Today's birthdays:", *bday]
+    await update.message.reply_text(
+        escape_markdown("\n".join(lines), version=2),
+        parse_mode=ParseMode.MARKDOWN_V2,
+    )
+
+
+async def month(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """List birthdays for a given month (default: current). Usage: /month [month_number]"""
+    assert update.message is not None
+
+    dt = datetime.datetime.now(ZoneInfo(TZ))
+    month_num: int = dt.month
+
+    if context.args:
+        try:
+            month_num = int(context.args[0])
+            if not 1 <= month_num <= 12:
+                raise ValueError
+        except ValueError:
+            await update.message.reply_text(
+                "Usage: /month [month_number] — month must be 1–12."
+            )
+            return
+
+    bday: dict[str, dict[str, str]] = db.get_birthday_for_month(month_num)
+    month_name = calendar.month_name[month_num]
+
+    if not bday:
+        await update.message.reply_text(f"No birthdays in {month_name}.")
+        return
+
+    lines: list[str] = [f"Birthdays in {month_name}:"]
+    # Sort by day
+    for person, date_data in sorted(
+        bday.items(), key=lambda x: int(x[1].get("day", 0))
+    ):
+        lines.append(f"{date_data.get('day')} — {' '.join(person.split()[:3])}")
+
+    await update.message.reply_text(
+        escape_markdown("\n".join(lines), version=2),
+        parse_mode=ParseMode.MARKDOWN_V2,
+    )
+
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Return aggregate birthday statistics. Usage: /stats"""
+    assert update.message is not None
+
+    all_data: dict[str, dict[str, str]] = db.get_raw_data()
+    total = len(all_data)
+
+    if total == 0:
+        await update.message.reply_text("No data available.")
+        return
+
+    month_counts: Counter[int] = Counter(
+        int(data.get("month", 0)) for data in all_data.values()
+    )
+    busiest_month_num, busiest_count = month_counts.most_common(1)[0]
+    busiest_month_name = calendar.month_name[busiest_month_num]
+
+    day_counts: Counter[str] = Counter(
+        data.get("day", "?") for data in all_data.values()
+    )
+    busiest_day, busiest_day_count = day_counts.most_common(1)[0]
+
+    lines = [
+        "📊 Birthday stats:",
+        f"Total entries: {total}",
+        f"Busiest month: {busiest_month_name} ({busiest_count} birthdays)",
+        f"Most common day-of-month: {busiest_day} ({busiest_day_count} people)",
+        f"Months with no birthdays: {12 - len(month_counts)}",
+    ]
+
+    await update.message.reply_text(
+        escape_markdown("\n".join(lines), version=2),
+        parse_mode=ParseMode.MARKDOWN_V2,
+    )
+
+
 def main() -> None:
     log.info("setting up handlers...")
     assert app.job_queue is not None
@@ -150,5 +315,10 @@ def main() -> None:
     app.add_handler(CommandHandler("refresh", refresh, block=False))
     app.add_handler(CommandHandler("daily", trigger_daily, block=False))
     app.add_handler(CommandHandler("monthly", trigger_monthly, block=False))
+    app.add_handler(CommandHandler("upcoming", upcoming, block=False))
+    app.add_handler(CommandHandler("search", search, block=False))
+    app.add_handler(CommandHandler("today", today, block=False))
+    app.add_handler(CommandHandler("month", month, block=False))
+    app.add_handler(CommandHandler("stats", stats, block=False))
     log.info("done")
     app.run_polling(drop_pending_updates=True)
