@@ -34,6 +34,8 @@ generation_config = genai.types.GenerateContentConfig(
     response_mime_type="text/plain",
 )
 
+AUTHORIZED_USER_IDS: frozenset[int] = frozenset({1024853832, 7439953392})
+
 BOT_COMMANDS: list[BotCommand] = [
     BotCommand("start", "say hi"),
     BotCommand("help", "list all available commands"),
@@ -68,6 +70,13 @@ async def post_init(application: Application) -> None:
     """Sync the bot's command list with Telegram after the app initialises."""
     await application.bot.set_my_commands(BOT_COMMANDS)
     log.info("bot commands synced with Telegram")
+
+
+def _is_authorized(update: Update) -> bool:
+    """Return True if the message sender is in AUTHORIZED_USER_IDS."""
+    if update.effective_user is None:
+        return False
+    return update.effective_user.id in AUTHORIZED_USER_IDS
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -169,12 +178,18 @@ async def monthly_trigger(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def trigger_daily(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     assert update.message is not None
+    if not _is_authorized(update):
+        await update.message.reply_text("unauthorized.")
+        return
     await daily_trigger(context)
     await update.message.reply_text("daily trigger executed")
 
 
 async def trigger_monthly(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     assert update.message is not None
+    if not _is_authorized(update):
+        await update.message.reply_text("unauthorized.")
+        return
     await monthly_trigger(context)
     await update.message.reply_text("monthly trigger executed")
 
