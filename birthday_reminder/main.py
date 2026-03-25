@@ -100,7 +100,7 @@ async def listbday(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     for key, value in bday.items():
         text += (
             escape_markdown(
-                f"{key} {value.get('day')}/{value.get('month')}/{value.get('year')}",
+                f"{' '.join(key.split(' ')[:3])} {value.get('day')}/{value.get('month')}/{value.get('year')}",
                 version=2,
             )
             + "\n"
@@ -256,7 +256,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     lines: list[str] = [f'Search results for "{" ".join(context.args)}":']
     for name, data in matches.items():
         lines.append(
-            f"{' '.join(name.split()[:3])} — {data.get('day')}/{data.get('month')}/{data.get('year')}"
+            f"{name} — {data.get('day')}/{data.get('month')}/{data.get('year')}"
         )
 
     await update.message.reply_text(
