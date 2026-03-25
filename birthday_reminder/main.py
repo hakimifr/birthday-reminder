@@ -100,7 +100,7 @@ async def listbday(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     for key, value in bday.items():
         text += (
             escape_markdown(
-                f"{' '.join(key.split(' ')[:3])} {value.get('day')}/{value.get('month')}/{value.get('year')}",
+                f"{key} {value.get('day')}/{value.get('month')}/{value.get('year')}",
                 version=2,
             )
             + "\n"
