@@ -141,9 +141,9 @@ async def daily_trigger(context: ContextTypes.DEFAULT_TYPE) -> None:
             config=generation_config,
         )
         wish = response.text
-    except Exception:
+    except Exception as e:
         log.exception("Gemini response generation failed")
-        wish = "[cannot generate wish, check bot log. happy birthday!]"
+        wish = f"[cannot generate wish, check bot log. happy birthday!]\nException: {e}"
 
     text = (
         escape_markdown("Today is the birthday of:", version=2)
