@@ -134,6 +134,7 @@ async def daily_trigger(context: ContextTypes.DEFAULT_TYPE) -> None:
         prompt += " Your output must be in Malay (Bahasa Melayu)."
 
     # response = await chat_session.send_message_async(prompt)
+    wish_generation_error: bool = False
     try:
         response = await client.aio.models.generate_content(
             model="gemini-2.5-flash",
@@ -144,6 +145,7 @@ async def daily_trigger(context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception as e:
         log.exception("Gemini response generation failed")
         wish = f"[cannot generate wish, check bot log. happy birthday!]\nException: {e}"
+        wish_generation_error = True
 
     text = (
         escape_markdown("Today is the birthday of:", version=2)
@@ -153,6 +155,9 @@ async def daily_trigger(context: ContextTypes.DEFAULT_TYPE) -> None:
         + escape_markdown(f"\n{wish}", version=2)
         + escape_markdown(" ✨🥳✨", version=2)
     )
+
+    if wish_generation_error:
+        text += "\nbot error alert [kimi](tg://user?id=1024853832)"
 
     msg = await context.bot.send_message(
         -1001264770246, text, parse_mode=ParseMode.MARKDOWN_V2

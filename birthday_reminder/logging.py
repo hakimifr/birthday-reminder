@@ -18,7 +18,6 @@
 # type: ignore (this file is imported, cba to fix type errors)
 
 import logging
-import os
 
 log_additional_args: dict = {"filename": "bot.log", "level": logging.INFO}
 
